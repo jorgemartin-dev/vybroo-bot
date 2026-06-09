@@ -1,6 +1,45 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
-const qrcode = require('qrcode-terminal');
 const Anthropic = require('@anthropic-ai/sdk');
+const express = require('express');
+const http = require('http');
+
+const app = express();
+const server = http.createServer(app);
+
+let ultimoQR = null;
+
+app.get('/', (req, res) => {
+    if (ultimoQR) {
+        res.send(`
+            <html>
+            <head><title>Vybroo Bot - Conectar WhatsApp</title></head>
+            <body style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;background:#17182D;color:white;">
+                <h2>Escanea este QR con tu WhatsApp</h2>
+                <img src="${ultimoQR}" style="width:300px;height:300px;border-radius:12px;"/>
+                <p style="margin-top:20px;color:#6D66E4;">Abre WhatsApp → Dispositivos vinculados → Vincular dispositivo</p>
+                <p style="font-size:12px;color:#aaa;">La página se actualiza sola cada 30 segundos</p>
+                <script>setTimeout(()=>location.reload(),30000)</script>
+            </body>
+            </html>
+        `);
+    } else {
+        res.send(`
+            <html>
+            <head><title>Vybroo Bot</title></head>
+            <body style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;background:#17182D;color:white;">
+                <h2>Vybroo Bot</h2>
+                <p>✅ Bot conectado y funcionando</p>
+                <script>setTimeout(()=>location.reload(),10000)</script>
+            </body>
+            </html>
+        `);
+    }
+});
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+    console.log(`Servidor corriendo en puerto ${PORT}`);
+});
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -41,28 +80,27 @@ const client = new Client({
 });
 
 client.on('qr', qr => {
-    qrcode.generate(qr, { small: true });
-    console.log('Escanea el código QR con tu WhatsApp');
+    const QRCode = require('qrcode');
+    QRCode.toDataURL(qr, (err, url) => {
+        if (!err) {
+            ultimoQR = url;
+            console.log('QR generado — visita la URL de tu servicio en Render para escanearlo');
+        }
+    });
 });
 
 client.on('ready', () => {
+    ultimoQR = null;
     console.log('Bot de Vybroo listo y conectado');
 });
 
 client.on('message', async (message) => {
     if (message.isGroupMsg) return;
-
     const contacto = message.from;
-
     if (!conversaciones[contacto]) {
         conversaciones[contacto] = [];
     }
-
-    conversaciones[contacto].push({
-        role: 'user',
-        content: message.body
-    });
-
+    conversaciones[contacto].push({ role: 'user', content: message.body });
     try {
         const respuesta = await anthropic.messages.create({
             model: 'claude-sonnet-4-20250514',
@@ -70,16 +108,9 @@ client.on('message', async (message) => {
             system: SYSTEM_PROMPT,
             messages: conversaciones[contacto]
         });
-
         const texto = respuesta.content[0].text;
-
-        conversaciones[contacto].push({
-            role: 'assistant',
-            content: texto
-        });
-
+        conversaciones[contacto].push({ role: 'assistant', content: texto });
         await message.reply(texto);
-
     } catch (error) {
         console.error('Error:', error);
     }
