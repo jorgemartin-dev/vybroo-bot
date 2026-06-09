@@ -28,7 +28,17 @@ ESTILO:
 
 const conversaciones = {};
 
-const client = new Client({ authStrategy: new LocalAuth() });
+const client = new Client({
+    authStrategy: new LocalAuth(),
+    puppeteer: {
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu'
+        ]
+    }
+});
 
 client.on('qr', qr => {
     qrcode.generate(qr, { small: true });
